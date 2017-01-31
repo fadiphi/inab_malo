@@ -1,0 +1,73 @@
+#! /bin/bash
+#requirements:
+#dialog, sqlite3
+
+#set some variables
+prefix=$HOME/.inab
+
+#definitions
+check_if_sqlite_installed(){
+    echo "ciao"
+}
+check_if_dialog_installed(){
+    echo "ciao"
+}
+
+
+get_categories(){
+    cat $prefix/categories
+}
+
+build_categories(){
+    cp $prefix/.categories_ok $prefix/.categories_ok.old
+    for i in `less $prefix/categories|sed s,\ ,_,g`;do
+	echo $i\ $i>>$prefix/.categories_ok
+    done
+}
+
+build_database(){
+    echo "Building database..."
+    a=$(get_categories|sed s,\ ,_,g)
+    sqlite3 -line $prefix/inab.db 'CREATE TABLE IF NOT EXISTS "situation"(category varchar(10), predict float, actual float, difference float);'
+    for i in `echo $a`;do
+	echo "Initializing category "$i "to 0 0 0"
+	sqlite3 -line $prefix/inab.db 'INSERT INTO "situation" VALUES("'$i'",0.0,0.0,0.0);'
+    done
+    
+}
+
+new_transaction(){	
+	category=$(dialog --stdout --menu "Insert a Category" 0 0 0 `less $prefix/.categories_ok`)
+	date=$(dialog --stdout --calendar "Insert Day of Transaction" 0 0)
+	     day_for_db=$(echo $date|awk -F'/' '{print $1}')
+	     month_for_db=$(echo $date|awk -F'/' '{print $2}')
+	     year_for_db=$(echo $date|awk -F'/' '{print $3}')
+        amount=$(dialog --stdout --inputbox  "Insert amount of transaction (please use a point . to separate decimals)" 0 0)
+	comments=$(dialog --stdout --inputbox "Insert a comment(if you want)" 0 0)
+	
+
+	#sqlite3 -line $prefix/inab.db
+	echo "CREATE TABLE" '"'"$year_for_db"_"$month_for_db"'"'"(category text,day smallint,month smallint, year smallint,amount float,comments text);">$prefix/sql_script.sql
+	#sqlite3 -line $prefix/inab.db 
+	echo "INSERT INTO "\""$year_for_db"_"$month_for_db"\"" VALUES"\(\"$category\"\,$day_for_db\,$month_for_db\,$year_for_db\,$amount\,\"$comments\"\)\;>>$prefix/sql_script.sql
+	sqlite3 -line $prefix/inab.db '.read '$prefix'/sql_script.sql'
+
+}
+
+sum_of_category(){
+    sqlite3 -line $prefix/inab.db 'select sum(amount) as sum_'$category' from "'$year_for_db'_'$month_for_db'" where category="'$category'"'|grep -o "[[:digit:]].*[[:digit:]]"
+}
+
+
+update_contability(){
+    
+    a=$(sum_of_category "$category")
+    sqlite3 -line $prefix/inab.db 'update situation set actual='$a' where category="'$category'"'
+}
+
+
+
+
+#begin of the script
+new_transaction
+update_contability
